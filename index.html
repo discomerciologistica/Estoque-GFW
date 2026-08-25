@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Controle de Estoque</title>
+<style>
+  :root {
+    --bg: #14161a;
+    --bg-panel: #1c1f25;
+    --bg-elevated: #23272f;
+    --border: #2e333d;
+    --text: #e8eaed;
+    --text-dim: #9aa1ac;
+    --accent: #4f8cff;
+    --accent-dim: #2c4a80;
+    --green: #3ecf8e;
+    --red: #f0655a;
+    --amber: #e0a83e;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+  a { color: var(--accent); }
+
+  /* ---------- LOGIN ---------- */
+  #login-screen {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .login-card {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 36px 32px;
+    width: 100%;
+    max-width: 360px;
+  }
+  .login-card h1 {
+    font-size: 20px;
+    margin: 0 0 4px;
+  }
+  .login-card p.subtitle {
+    color: var(--text-dim);
+    font-size: 13px;
+    margin: 0 0 24px;
+  }
+  label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+    margin-top: 16px;
+  }
+  input, select {
+    width: 100%;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: var(--text);
+    font-size: 14px;
+  }
+  input:focus, select:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  button {
+    cursor: pointer;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 10px 16px;
+  }
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+    width: 100%;
+    margin-top: 22px;
+  }
+  .btn-primary:hover { background: #3d75e0; }
+  .btn-secondary {
+    background: var(--bg-elevated);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .btn-danger { background: var(--red); color: #fff; }
+  .error-msg {
+    color: var(--red);
+    font-size: 13px;
+    margin-top: 12px;
+    display: none;
+  }
+
+  /* ---------- APP SHELL ---------- */
+  #app-screen { display: none; }
+  header {
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  header .title { font-size: 16px; font-weight: 600; }
+  header .user-info { font-size: 13px; color: var(--text-dim); display: flex; align-items: center; gap: 12px; }
+  nav {
+    display: flex;
+    gap: 4px;
+    padding: 10px 20px 0;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-panel);
+    overflow-x: auto;
+  }
+  nav button {
+    background: transparent;
+    color: var(--text-dim);
+    padding: 10px 14px;
+    border-radius: 8px 8px 0 0;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  nav button.active {
+    color: var(--text);
+    background: var(--bg-elevated);
+  }
+  main { padding: 20px; max-width: 1000px; margin: 0 auto; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  .card {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .card h2 { font-size: 15px; margin: 0 0 16px; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 560px) { .grid-2 { grid-template-columns: 1fr; } }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  th { color: var(--text-dim); font-weight: 500; font-size: 12px; }
+  tr:hover td { background: var(--bg-elevated); }
+  .tag { padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+  .tag-entrada { background: rgba(62,207,142,0.15); color: var(--green); }
+  .tag-saida { background: rgba(240,101,90,0.15); color: var(--red); }
+  .badge-adm { background: rgba(224,168,62,0.15); color: var(--amber); padding: 2px 8px; border-radius: 20px; font-size: 11px; }
+
+  .search-box { position: relative; margin-bottom: 12px; }
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--green);
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-size: 13px;
+    max-width: 320px;
+    display: none;
+    z-index: 100;
+  }
+  .toast.error { border-left-color: var(--red); }
+  .empty-state { color: var(--text-dim); font-size: 13px; text-align: center; padding: 30px 0; }
+  .filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .filters select, .filters input { width: auto; min-width: 140px; }
+  .hint { font-size: 12px; color: var(--text-dim); margin-top: 6px; }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-card">
+    <h1>Controle de Estoque</h1>
+    <p class="subtitle">Entre com seu usuário e senha</p>
+    <form id="login-form">
+      <label>Usuário</label>
+      <input type="text" id="login-usuario" autocomplete="username" required>
+      <label>Senha</label>
+      <input type="password" id="login-senha" autocomplete="current-password" required>
+      <button type="submit" class="btn-primary">Entrar</button>
+      <p class="error-msg" id="login-error"></p>
+    </form>
+  </div>
+</div>
+
+<!-- TROCA DE SENHA OBRIGATÓRIA -->
+<div id="troca-senha-screen" style="display:none;" class="login-card" style="margin:auto; margin-top:15vh;">
+</div>
+
+<!-- APP -->
+<div id="app-screen">
+  <header>
+    <div class="title">Controle de Estoque</div>
+    <div class="user-info">
+      <span id="user-display"></span>
+      <button class="btn-secondary" id="btn-logout">Sair</button>
+    </div>
+  </header>
+  <nav id="tabs">
+    <button data-tab="movimentar" class="active">Registrar</button>
+    <button data-tab="historico">Histórico</button>
+    <button data-tab="admin" id="tab-admin-btn" style="display:none;">Administração</button>
+  </nav>
+  <main>
+
+    <!-- REGISTRAR MOVIMENTAÇÃO -->
+    <section class="tab-panel active" id="tab-movimentar">
+      <div class="card">
+        <h2>Registrar entrada ou saída</h2>
+        <form id="form-movimentacao">
+          <label>Produto (código ou descrição)</label>
+          <input type="text" id="mov-busca" list="lista-produtos" autocomplete="off" required placeholder="Digite o código ou parte da descrição">
+          <datalist id="lista-produtos"></datalist>
+          <p class="hint" id="mov-saldo-hint"></p>
+
+          <div class="grid-2">
+            <div>
+              <label>Tipo</label>
+              <select id="mov-tipo">
+                <option value="Entrada">Entrada</option>
+                <option value="Saida">Saída</option>
+              </select>
+            </div>
+            <div>
+              <label>Quantidade</label>
+              <input type="number" id="mov-quantidade" min="1" required>
+            </div>
+          </div>
+
+          <label>Observação (opcional)</label>
+          <input type="text" id="mov-observacao" placeholder="Ex: NF 12345, transferência, ajuste...">
+
+          <button type="submit" class="btn-primary">Registrar movimentação</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- HISTÓRICO -->
+    <section class="tab-panel" id="tab-historico">
+      <div class="card">
+        <h2>Histórico de movimentações</h2>
+        <div class="filters">
+          <select id="filtro-tipo">
+            <option value="">Todos os tipos</option>
+            <option value="Entrada">Entrada</option>
+            <option value="Saida">Saída</option>
+          </select>
+          <input type="text" id="filtro-codigo" placeholder="Filtrar por código">
+          <input type="text" id="filtro-usuario" placeholder="Filtrar por usuário">
+          <button class="btn-secondary" id="btn-filtrar">Filtrar</button>
+        </div>
+        <div id="historico-container">
+          <p class="empty-state">Carregando...</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ADMIN -->
+    <section class="tab-panel" id="tab-admin">
+      <div class="card">
+        <h2>Cadastrar produto</h2>
+        <form id="form-produto">
+          <div class="grid-2">
+            <div>
+              <label>Código</label>
+              <input type="text" id="prod-codigo" required>
+            </div>
+            <div>
+              <label>Marca</label>
+              <input type="text" id="prod-marca">
+            </div>
+          </div>
+          <label>Descrição</label>
+          <input type="text" id="prod-descricao" required>
+          <button type="submit" class="btn-secondary" style="margin-top:16px;">Cadastrar produto</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2>Cadastrar usuário</h2>
+        <form id="form-usuario">
+          <div class="grid-2">
+            <div>
+              <label>Nome</label>
+              <input type="text" id="user-nome" required>
+            </div>
+            <div>
+              <label>E-mail</label>
+              <input type="email" id="user-email" required>
+            </div>
+          </div>
+          <div class="grid-2">
+            <div>
+              <label>Login (usuário)</label>
+              <input type="text" id="user-login" required>
+            </div>
+            <div>
+              <label>Perfil</label>
+              <select id="user-perfil">
+                <option value="COLABORADOR">Colaborador</option>
+                <option value="ADM">ADM</option>
+              </select>
+            </div>
+          </div>
+          <button type="submit" class="btn-secondary" style="margin-top:16px;">Cadastrar usuário</button>
+        </form>
+        <p class="hint">O usuário recebe a senha inicial <strong>Estoque@2026</strong> e é obrigado a trocá-la no primeiro login.</p>
+        <div id="usuarios-lista" style="margin-top:16px;"></div>
+      </div>
+
+      <div class="card">
+        <h2>Lista de e-mails para notificação</h2>
+        <form id="form-email" class="grid-2">
+          <input type="email" id="notif-email" placeholder="email@empresa.com" required>
+          <button type="submit" class="btn-secondary">Adicionar</button>
+        </form>
+        <div id="emails-lista" style="margin-top:16px;"></div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="config.js"></script>
+<script>
+let sessao = null;
+let produtosCache = [];
+
+// ---------- utilidades ----------
+function showToast(msg, isError) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast' + (isError ? ' error' : '');
+  t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', 3500);
+}
+
+async function api(action, params) {
+  const body = new URLSearchParams();
+  body.set('data', JSON.stringify({ action, ...params }));
+  const res = await fetch(API_URL, { method: 'POST', body });
+  const json = await res.json();
+  if (!json.sucesso) throw new Error(json.erro || 'Erro desconhecido');
+  return json;
+}
+
+// ---------- login ----------
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const usuario = document.getElementById('login-usuario').value.trim();
+  const senha = document.getElementById('login-senha').value;
+  const errEl = document.getElementById('login-error');
+  errEl.style.display = 'none';
+  try {
+    const resp = await api('login', { usuario, senha });
+    sessao = { usuario: resp.usuario, nome: resp.nome, perfil: resp.perfil };
+    localStorage.setItem('estoque_sessao', JSON.stringify(sessao));
+    if (resp.precisaTrocarSenha) {
+      mostrarTrocaSenha(senha);
+    } else {
+      entrarNoApp();
+    }
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.style.display = 'block';
+  }
+});
+
+function mostrarTrocaSenha(senhaAtual) {
+  document.getElementById('login-screen').style.display = 'none';
+  const el = document.getElementById('troca-senha-screen');
+  el.style.display = 'block';
+  el.innerHTML = `
+    <h1>Defina sua nova senha</h1>
+    <p class="subtitle">Por segurança, troque a senha inicial antes de continuar.</p>
+    <label>Nova senha</label>
+    <input type="password" id="nova-senha" minlength="6" required>
+    <label>Confirmar nova senha</label>
+    <input type="password" id="confirma-senha" minlength="6" required>
+    <button class="btn-primary" id="btn-trocar-senha">Salvar e continuar</button>
+    <p class="error-msg" id="troca-error"></p>
+  `;
+  document.getElementById('btn-trocar-senha').addEventListener('click', async () => {
+    const nova = document.getElementById('nova-senha').value;
+    const conf = document.getElementById('confirma-senha').value;
+    const errEl = document.getElementById('troca-error');
+    if (nova !== conf) {
+      errEl.textContent = 'As senhas não coincidem';
+      errEl.style.display = 'block';
+      return;
+    }
+    try {
+      await api('trocarSenha', { usuario: sessao.usuario, senhaAtual, novaSenha: nova });
+      showToast('Senha alterada com sucesso');
+      entrarNoApp();
+    } catch (err) {
+      errEl.textContent = err.message;
+      errEl.style.display = 'block';
+    }
+  });
+}
+
+function entrarNoApp() {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('troca-senha-screen').style.display = 'none';
+  document.getElementById('app-screen').style.display = 'block';
+  document.getElementById('user-display').textContent = `${sessao.nome} · ${sessao.perfil}`;
+  if (sessao.perfil === 'ADM') {
+    document.getElementById('tab-admin-btn').style.display = 'inline-block';
+  }
+  carregarProdutos();
+  carregarHistorico();
+  if (sessao.perfil === 'ADM') {
+    carregarUsuarios();
+    carregarEmails();
+  }
+}
+
+document.getElementById('btn-logout').addEventListener('click', () => {
+  localStorage.removeItem('estoque_sessao');
+  location.reload();
+});
+
+// ---------- abas ----------
+document.getElementById('tabs').addEventListener('click', (e) => {
+  if (e.target.tagName !== 'BUTTON') return;
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  e.target.classList.add('active');
+  document.getElementById('tab-' + e.target.dataset.tab).classList.add('active');
+});
+
+// ---------- produtos / movimentação ----------
+async function carregarProdutos() {
+  const resp = await api('listarProdutos', {});
+  produtosCache = resp.produtos;
+  const datalist = document.getElementById('lista-produtos');
+  datalist.innerHTML = produtosCache.map(p => `<option value="${p.codigo} — ${p.descricao}">`).join('');
+}
+
+document.getElementById('mov-busca').addEventListener('input', (e) => {
+  const codigo = e.target.value.split(' — ')[0].trim();
+  const produto = produtosCache.find(p => p.codigo === codigo);
+  const hint = document.getElementById('mov-saldo-hint');
+  hint.textContent = produto ? `Estoque atual: ${produto.estoqueAtual} un.` : '';
+});
+
+document.getElementById('form-movimentacao').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const codigo = document.getElementById('mov-busca').value.split(' — ')[0].trim();
+  const tipo = document.getElementById('mov-tipo').value;
+  const quantidade = document.getElementById('mov-quantidade').value;
+  const observacao = document.getElementById('mov-observacao').value;
+  try {
+    await api('registrarMovimentacao', { codigo, tipo, quantidade, usuario: sessao.usuario, observacao });
+    showToast(`${tipo === 'Entrada' ? 'Entrada' : 'Saída'} registrada com sucesso`);
+    e.target.reset();
+    document.getElementById('mov-saldo-hint').textContent = '';
+    carregarProdutos();
+    carregarHistorico();
+  } catch (err) {
+    showToast(err.message, true);
+  }
+});
+
+// ---------- histórico ----------
+async function carregarHistorico() {
+  const filtros = {
+    tipo: document.getElementById('filtro-tipo').value,
+    codigo: document.getElementById('filtro-codigo').value.trim(),
+    usuario: document.getElementById('filtro-usuario').value.trim()
+  };
+  const resp = await api('listarMovimentacoes', { filtros });
+  const container = document.getElementById('historico-container');
+  if (resp.movimentacoes.length === 0) {
+    container.innerHTML = '<p class="empty-state">Nenhuma movimentação encontrada</p>';
+    return;
+  }
+  container.innerHTML = `
+    <table>
+      <thead><tr><th>Data/Hora</th><th>Código</th><th>Descrição</th><th>Tipo</th><th>Qtd</th><th>Usuário</th><th>Obs.</th></tr></thead>
+      <tbody>
+        ${resp.movimentacoes.map(m => `
+          <tr>
+            <td>${m.dataHora}</td>
+            <td>${m.codigo}</td>
+            <td>${m.descricao}</td>
+            <td><span class="tag ${m.tipo === 'Entrada' ? 'tag-entrada' : 'tag-saida'}">${m.tipo === 'Entrada' ? 'Entrada' : 'Saída'}</span></td>
+            <td>${m.quantidade}</td>
+            <td>${m.usuario}</td>
+            <td>${m.observacao || ''}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+document.getElementById('btn-filtrar').addEventListener('click', carregarHistorico);
+
+// ---------- admin: produtos ----------
+document.getElementById('form-produto').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const codigo = document.getElementById('prod-codigo').value.trim();
+  const descricao = document.getElementById('prod-descricao').value.trim();
+  const marca = document.getElementById('prod-marca').value.trim();
+  try {
+    await api('cadastrarProduto', { codigo, descricao, marca });
+    showToast('Produto cadastrado');
+    e.target.reset();
+    carregarProdutos();
+  } catch (err) {
+    showToast(err.message, true);
+  }
+});
+
+// ---------- admin: usuários ----------
+document.getElementById('form-usuario').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const nome = document.getElementById('user-nome').value.trim();
+  const email = document.getElementById('user-email').value.trim();
+  const usuario = document.getElementById('user-login').value.trim();
+  const perfil = document.getElementById('user-perfil').value;
+  try {
+    const resp = await api('cadastrarUsuario', { nome, email, usuario, perfil });
+    showToast(`Usuário criado. Senha inicial: ${resp.senhaInicial}`);
+    e.target.reset();
+    carregarUsuarios();
+  } catch (err) {
+    showToast(err.message, true);
+  }
+});
+
+async function carregarUsuarios() {
+  const resp = await api('listarUsuarios', {});
+  const el = document.getElementById('usuarios-lista');
+  el.innerHTML = `
+    <table>
+      <thead><tr><th>Nome</th><th>Login</th><th>E-mail</th><th>Perfil</th></tr></thead>
+      <tbody>
+        ${resp.usuarios.map(u => `
+          <tr>
+            <td>${u.nome}</td>
+            <td>${u.usuario}</td>
+            <td>${u.email}</td>
+            <td>${u.perfil === 'ADM' ? '<span class="badge-adm">ADM</span>' : 'Colaborador'}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+// ---------- admin: e-mails de notificação ----------
+document.getElementById('form-email').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const email = document.getElementById('notif-email').value.trim();
+  try {
+    await api('cadastrarEmailNotificacao', { email });
+    showToast('E-mail adicionado à lista de notificação');
+    e.target.reset();
+    carregarEmails();
+  } catch (err) {
+    showToast(err.message, true);
+  }
+});
+
+async function carregarEmails() {
+  const resp = await api('listarNotificacoes', {});
+  const el = document.getElementById('emails-lista');
+  el.innerHTML = resp.emails.map(e => `<div style="padding:6px 0; border-bottom:1px solid var(--border); font-size:13px;">${e}</div>`).join('') || '<p class="empty-state">Nenhum e-mail cadastrado</p>';
+}
+
+// ---------- restaurar sessão ----------
+(function tentarRestaurarSessao() {
+  const salva = localStorage.getItem('estoque_sessao');
+  if (salva) {
+    sessao = JSON.parse(salva);
+    entrarNoApp();
+  }
+})();
+</script>
+</body>
+</html>
