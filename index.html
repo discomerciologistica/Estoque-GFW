@@ -190,6 +190,9 @@
     margin-bottom: 14px;
   }
   .totais-estoque .item { display: flex; flex-direction: column; }
+  .totais-estoque .item.clicavel { cursor: pointer; padding: 4px 10px; border-radius: 8px; border: 1px solid transparent; transition: background 0.15s, border-color 0.15s; }
+  .totais-estoque .item.clicavel:hover { background: rgba(255,255,255,0.04); }
+  .totais-estoque .item.clicavel.ativo { border-color: var(--accent); background: rgba(79,140,255,0.08); }
   .totais-estoque .item .valor { font-size: 20px; font-weight: 700; }
   .totais-estoque .item .label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.03em; }
   .estoque-baixo { color: var(--amber); }
@@ -485,26 +488,62 @@ async function carregarProdutos() {
   produtosCache = resp.produtos;
   const datalist = document.getElementById('lista-produtos');
   datalist.innerHTML = produtosCache.map(p => `<option value="${p.codigo} — ${p.descricao}">`).join('');
-  renderEstoque(produtosCache);
+  renderEstoque();
 }
 
-function renderEstoque(lista) {
-  const totaisEl = document.getElementById('totais-estoque');
-  const totalUnidades = lista.reduce((soma, p) => soma + Number(p.estoqueAtual || 0), 0);
-  const totalSkus = lista.length;
-  const skusZerados = lista.filter(p => Number(p.estoqueAtual) <= 0).length;
-  totaisEl.innerHTML = `
-    <div class="item"><span class="valor">${totalUnidades}</span><span class="label">Unidades em estoque</span></div>
-    <div class="item"><span class="valor">${totalSkus}</span><span class="label">Produtos cadastrados</span></div>
-    <div class="item"><span class="valor ${skusZerados > 0 ? 'estoque-zerado' : ''}">${skusZerados}</span><span class="label">Produtos zerados</span></div>
-  `;
+let estoqueFiltroAtivo = 'todos'; // 'todos' | 'comEstoque' | 'zerados'
+let estoqueBuscaTermo = '';
 
+function aplicarFiltroQuantidade(lista) {
+  if (estoqueFiltroAtivo === 'comEstoque') return lista.filter(p => Number(p.estoqueAtual) > 0);
+  if (estoqueFiltroAtivo === 'zerados') return lista.filter(p => Number(p.estoqueAtual) <= 0);
+  return lista;
+}
+
+function aplicarFiltroBusca(lista) {
+  if (!estoqueBuscaTermo) return lista;
+  const termo = estoqueBuscaTermo.toLowerCase();
+  return lista.filter(p =>
+    String(p.codigo).toLowerCase().includes(termo) ||
+    (p.descricao || '').toLowerCase().includes(termo) ||
+    (p.marca || '').toLowerCase().includes(termo)
+  );
+}
+
+function renderEstoque() {
+  // Totais sempre calculados sobre a base completa (não mudam com o filtro de busca)
+  const totalUnidades = produtosCache.reduce((soma, p) => soma + Number(p.estoqueAtual || 0), 0);
+  const totalComEstoque = produtosCache.filter(p => Number(p.estoqueAtual) > 0).length;
+  const totalZerados = produtosCache.filter(p => Number(p.estoqueAtual) <= 0).length;
+
+  const totaisEl = document.getElementById('totais-estoque');
+  totaisEl.innerHTML = `
+    <div class="item clicavel ${estoqueFiltroAtivo === 'comEstoque' ? 'ativo' : ''}" data-filtro="comEstoque">
+      <span class="valor">${totalUnidades}</span><span class="label">Unidades em estoque</span>
+    </div>
+    <div class="item clicavel ${estoqueFiltroAtivo === 'todos' ? 'ativo' : ''}" data-filtro="todos">
+      <span class="valor">${produtosCache.length}</span><span class="label">Produtos cadastrados</span>
+    </div>
+    <div class="item clicavel ${estoqueFiltroAtivo === 'zerados' ? 'ativo' : ''}" data-filtro="zerados">
+      <span class="valor ${totalZerados > 0 ? 'estoque-zerado' : ''}">${totalZerados}</span><span class="label">Produtos zerados</span>
+    </div>
+  `;
+  totaisEl.querySelectorAll('.item.clicavel').forEach(el => {
+    el.addEventListener('click', () => {
+      estoqueFiltroAtivo = el.dataset.filtro;
+      renderEstoque();
+    });
+  });
+  // evita perder o valor digitado ao re-renderizar os totais
+  document.getElementById('estoque-busca').value = estoqueBuscaTermo;
+
+  const filtrada = aplicarFiltroBusca(aplicarFiltroQuantidade(produtosCache));
   const container = document.getElementById('estoque-container');
-  if (lista.length === 0) {
+  if (filtrada.length === 0) {
     container.innerHTML = '<p class="empty-state">Nenhum produto encontrado</p>';
     return;
   }
-  const ordenada = [...lista].sort((a, b) => a.descricao.localeCompare(b.descricao));
+  const ordenada = [...filtrada].sort((a, b) => a.descricao.localeCompare(b.descricao));
   container.innerHTML = `
     <table>
       <thead><tr><th>Código</th><th>Descrição</th><th>Marca</th><th>Estoque atual</th></tr></thead>
@@ -523,13 +562,8 @@ function renderEstoque(lista) {
 }
 
 document.getElementById('estoque-busca').addEventListener('input', (e) => {
-  const termo = e.target.value.toLowerCase();
-  const filtrada = produtosCache.filter(p =>
-    String(p.codigo).toLowerCase().includes(termo) ||
-    (p.descricao || '').toLowerCase().includes(termo) ||
-    (p.marca || '').toLowerCase().includes(termo)
-  );
-  renderEstoque(filtrada);
+  estoqueBuscaTermo = e.target.value;
+  renderEstoque();
 });
 
 document.getElementById('mov-busca').addEventListener('input', (e) => {
