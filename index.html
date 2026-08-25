@@ -179,6 +179,21 @@
   .empty-state { color: var(--text-dim); font-size: 13px; text-align: center; padding: 30px 0; }
   .filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
   .filters select, .filters input { width: auto; min-width: 140px; }
+  .totais-estoque {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 14px;
+  }
+  .totais-estoque .item { display: flex; flex-direction: column; }
+  .totais-estoque .item .valor { font-size: 20px; font-weight: 700; }
+  .totais-estoque .item .label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.03em; }
+  .estoque-baixo { color: var(--amber); }
+  .estoque-zerado { color: var(--red); }
   .hint { font-size: 12px; color: var(--text-dim); margin-top: 6px; }
 </style>
 </head>
@@ -215,6 +230,7 @@
   </header>
   <nav id="tabs">
     <button data-tab="movimentar" class="active">Registrar</button>
+    <button data-tab="estoque">Estoque</button>
     <button data-tab="historico">Histórico</button>
     <button data-tab="admin" id="tab-admin-btn" style="display:none;">Administração</button>
   </nav>
@@ -249,6 +265,20 @@
 
           <button type="submit" class="btn-primary">Registrar movimentação</button>
         </form>
+      </div>
+    </section>
+
+    <!-- ESTOQUE ATUAL -->
+    <section class="tab-panel" id="tab-estoque">
+      <div class="card">
+        <h2>Estoque atual</h2>
+        <div class="filters">
+          <input type="text" id="estoque-busca" placeholder="Buscar por código, descrição ou marca" style="flex:1; min-width:220px;">
+        </div>
+        <div class="totais-estoque" id="totais-estoque"></div>
+        <div id="estoque-container">
+          <p class="empty-state">Carregando...</p>
+        </div>
       </div>
     </section>
 
@@ -455,7 +485,52 @@ async function carregarProdutos() {
   produtosCache = resp.produtos;
   const datalist = document.getElementById('lista-produtos');
   datalist.innerHTML = produtosCache.map(p => `<option value="${p.codigo} — ${p.descricao}">`).join('');
+  renderEstoque(produtosCache);
 }
+
+function renderEstoque(lista) {
+  const totaisEl = document.getElementById('totais-estoque');
+  const totalUnidades = lista.reduce((soma, p) => soma + Number(p.estoqueAtual || 0), 0);
+  const totalSkus = lista.length;
+  const skusZerados = lista.filter(p => Number(p.estoqueAtual) <= 0).length;
+  totaisEl.innerHTML = `
+    <div class="item"><span class="valor">${totalUnidades}</span><span class="label">Unidades em estoque</span></div>
+    <div class="item"><span class="valor">${totalSkus}</span><span class="label">Produtos cadastrados</span></div>
+    <div class="item"><span class="valor ${skusZerados > 0 ? 'estoque-zerado' : ''}">${skusZerados}</span><span class="label">Produtos zerados</span></div>
+  `;
+
+  const container = document.getElementById('estoque-container');
+  if (lista.length === 0) {
+    container.innerHTML = '<p class="empty-state">Nenhum produto encontrado</p>';
+    return;
+  }
+  const ordenada = [...lista].sort((a, b) => a.descricao.localeCompare(b.descricao));
+  container.innerHTML = `
+    <table>
+      <thead><tr><th>Código</th><th>Descrição</th><th>Marca</th><th>Estoque atual</th></tr></thead>
+      <tbody>
+        ${ordenada.map(p => `
+          <tr>
+            <td>${p.codigo}</td>
+            <td>${p.descricao}</td>
+            <td>${p.marca || ''}</td>
+            <td class="${Number(p.estoqueAtual) <= 0 ? 'estoque-zerado' : (Number(p.estoqueAtual) <= 3 ? 'estoque-baixo' : '')}">${p.estoqueAtual}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+document.getElementById('estoque-busca').addEventListener('input', (e) => {
+  const termo = e.target.value.toLowerCase();
+  const filtrada = produtosCache.filter(p =>
+    String(p.codigo).toLowerCase().includes(termo) ||
+    (p.descricao || '').toLowerCase().includes(termo) ||
+    (p.marca || '').toLowerCase().includes(termo)
+  );
+  renderEstoque(filtrada);
+});
 
 document.getElementById('mov-busca').addEventListener('input', (e) => {
   const codigo = e.target.value.split(' — ')[0].trim();
