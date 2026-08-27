@@ -226,6 +226,30 @@
   .totais-estoque .item .label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.03em; }
   .estoque-baixo { color: var(--amber); }
   .estoque-zerado { color: var(--red); }
+  tr.linha-especial td { background: rgba(240,101,90,0.12); color: var(--red); font-weight: 600; }
+  tr.linha-especial:hover td { background: rgba(240,101,90,0.18); }
+  tr.linha-especial td:first-child { border-left: 3px solid var(--red); }
+  .tag-especial {
+    display: inline-block;
+    background: var(--red);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    padding: 2px 7px;
+    border-radius: 4px;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+  .btn-toggle-especial {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 6px;
+  }
+  .btn-toggle-especial.ativo { border-color: var(--red); color: var(--red); }
   .hint { font-size: 12px; color: var(--text-dim); margin-top: 6px; }
   .tipo-toggle { display: flex; gap: 8px; }
   .tipo-btn {
@@ -368,6 +392,10 @@
           </div>
           <label>Descrição</label>
           <input type="text" id="prod-descricao" required>
+          <label style="display:flex; align-items:center; gap:8px; margin-top:16px; cursor:pointer;">
+            <input type="checkbox" id="prod-especial" style="width:auto; accent-color:var(--red);">
+            <span style="color:var(--red); font-weight:600;">Produto especial (destaque em vermelho no estoque)</span>
+          </label>
           <button type="submit" class="btn-secondary" style="margin-top:16px;">Cadastrar produto</button>
         </form>
       </div>
@@ -555,12 +583,13 @@ async function carregarProdutos() {
   renderEstoque();
 }
 
-let estoqueFiltroAtivo = 'todos'; // 'todos' | 'comEstoque' | 'zerados'
+let estoqueFiltroAtivo = 'todos'; // 'todos' | 'comEstoque' | 'zerados' | 'especiais'
 let estoqueBuscaTermo = '';
 
 function aplicarFiltroQuantidade(lista) {
   if (estoqueFiltroAtivo === 'comEstoque') return lista.filter(p => Number(p.estoqueAtual) > 0);
   if (estoqueFiltroAtivo === 'zerados') return lista.filter(p => Number(p.estoqueAtual) <= 0);
+  if (estoqueFiltroAtivo === 'especiais') return lista.filter(p => p.especial);
   return lista;
 }
 
@@ -574,11 +603,22 @@ function aplicarFiltroBusca(lista) {
   );
 }
 
+async function alternarEspecial(codigo, novoValor) {
+  try {
+    await api('alternarEspecial', { codigo, especial: novoValor });
+    const p = produtosCache.find(p => p.codigo === codigo);
+    if (p) p.especial = novoValor;
+    renderEstoque();
+  } catch (err) {
+    showToast(err.message, true);
+  }
+}
+
 function renderEstoque() {
   // Totais sempre calculados sobre a base completa (não mudam com o filtro de busca)
   const totalUnidades = produtosCache.reduce((soma, p) => soma + Number(p.estoqueAtual || 0), 0);
-  const totalComEstoque = produtosCache.filter(p => Number(p.estoqueAtual) > 0).length;
   const totalZerados = produtosCache.filter(p => Number(p.estoqueAtual) <= 0).length;
+  const totalEspeciais = produtosCache.filter(p => p.especial).length;
 
   const totaisEl = document.getElementById('totais-estoque');
   totaisEl.innerHTML = `
@@ -590,6 +630,9 @@ function renderEstoque() {
     </div>
     <div class="item clicavel ${estoqueFiltroAtivo === 'zerados' ? 'ativo' : ''}" data-filtro="zerados">
       <span class="valor ${totalZerados > 0 ? 'estoque-zerado' : ''}">${totalZerados}</span><span class="label">Produtos zerados</span>
+    </div>
+    <div class="item clicavel ${estoqueFiltroAtivo === 'especiais' ? 'ativo' : ''}" data-filtro="especiais">
+      <span class="valor" style="color:var(--red);">${totalEspeciais}</span><span class="label">Produtos especiais</span>
     </div>
   `;
   totaisEl.querySelectorAll('.item.clicavel').forEach(el => {
@@ -608,21 +651,30 @@ function renderEstoque() {
     return;
   }
   const ordenada = [...filtrada].sort((a, b) => a.descricao.localeCompare(b.descricao));
+  const ehAdm = sessao && sessao.perfil === 'ADM';
   container.innerHTML = `
     <table>
-      <thead><tr><th>Código</th><th>Descrição</th><th>Marca</th><th>Estoque atual</th></tr></thead>
+      <thead><tr><th>Código</th><th>Descrição</th><th>Marca</th><th>Estoque atual</th>${ehAdm ? '<th></th>' : ''}</tr></thead>
       <tbody>
         ${ordenada.map(p => `
-          <tr>
+          <tr class="${p.especial ? 'linha-especial' : ''}">
             <td>${p.codigo}</td>
-            <td>${p.descricao}</td>
+            <td>${p.descricao}${p.especial ? '<span class="tag-especial">ESPECIAL</span>' : ''}</td>
             <td>${p.marca || ''}</td>
-            <td class="${Number(p.estoqueAtual) <= 0 ? 'estoque-zerado' : (Number(p.estoqueAtual) <= 3 ? 'estoque-baixo' : '')}">${p.estoqueAtual}</td>
+            <td class="${!p.especial && Number(p.estoqueAtual) <= 0 ? 'estoque-zerado' : (!p.especial && Number(p.estoqueAtual) <= 3 ? 'estoque-baixo' : '')}">${p.estoqueAtual}</td>
+            ${ehAdm ? `<td><button type="button" class="btn-toggle-especial ${p.especial ? 'ativo' : ''}" data-codigo="${p.codigo}" data-valor="${p.especial ? '0' : '1'}">${p.especial ? 'Remover especial' : 'Marcar especial'}</button></td>` : ''}
           </tr>
         `).join('')}
       </tbody>
     </table>
   `;
+  if (ehAdm) {
+    container.querySelectorAll('.btn-toggle-especial').forEach(btn => {
+      btn.addEventListener('click', () => {
+        alternarEspecial(btn.dataset.codigo, btn.dataset.valor === '1');
+      });
+    });
+  }
 }
 
 document.getElementById('estoque-busca').addEventListener('input', (e) => {
@@ -634,7 +686,13 @@ document.getElementById('mov-busca').addEventListener('input', (e) => {
   const codigo = e.target.value.split(' — ')[0].trim();
   const produto = produtosCache.find(p => p.codigo === codigo);
   const hint = document.getElementById('mov-saldo-hint');
-  hint.textContent = produto ? `Estoque atual: ${produto.estoqueAtual} un.` : '';
+  if (!produto) {
+    hint.innerHTML = '';
+  } else if (produto.especial) {
+    hint.innerHTML = `Estoque atual: ${produto.estoqueAtual} un. <span class="tag-especial">PRODUTO ESPECIAL</span>`;
+  } else {
+    hint.innerHTML = `Estoque atual: ${produto.estoqueAtual} un.`;
+  }
 });
 
 document.getElementById('tipo-toggle').addEventListener('click', (e) => {
@@ -729,10 +787,11 @@ document.getElementById('form-produto').addEventListener('submit', async (e) => 
   const codigo = document.getElementById('prod-codigo').value.trim();
   const descricao = document.getElementById('prod-descricao').value.trim();
   const marca = document.getElementById('prod-marca').value.trim();
+  const especial = document.getElementById('prod-especial').checked;
   const botao = e.target.querySelector('button[type="submit"]');
   await comBotaoCarregando(botao, 'Cadastrando...', async () => {
     try {
-      await api('cadastrarProduto', { codigo, descricao, marca });
+      await api('cadastrarProduto', { codigo, descricao, marca, especial });
       showToast('Produto cadastrado');
       e.target.reset();
       carregarProdutos();
