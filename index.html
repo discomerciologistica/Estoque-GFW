@@ -266,6 +266,8 @@
   }
   .tipo-btn.tipo-entrada.ativo { background: rgba(62,207,142,0.18); border-color: var(--green); color: var(--green); }
   .tipo-btn.tipo-saida.ativo { background: rgba(240,101,90,0.18); border-color: var(--red); color: var(--red); }
+  .tipo-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  .tipo-btn:disabled.ativo { opacity: 0.5; }
   #form-movimentacao.modo-entrada { border-left: 4px solid var(--green); padding-left: 12px; }
   #form-movimentacao.modo-saida { border-left: 4px solid var(--red); padding-left: 12px; }
 </style>
@@ -325,6 +327,7 @@
                 <button type="button" class="tipo-btn tipo-entrada ativo" data-tipo="Entrada">▲ ENTRADA</button>
                 <button type="button" class="tipo-btn tipo-saida" data-tipo="Saida">▼ SAÍDA</button>
               </div>
+              <p class="hint" id="permissao-aviso" style="color:var(--amber);"></p>
               <input type="hidden" id="mov-tipo" value="Entrada">
             </div>
             <div>
@@ -426,6 +429,12 @@
               </select>
             </div>
           </div>
+          <label>Permissão de movimentação</label>
+          <select id="user-permissao">
+            <option value="AMBOS">Pode registrar Entrada e Saída</option>
+            <option value="ENTRADA">Somente Entrada</option>
+            <option value="SAIDA">Somente Saída</option>
+          </select>
           <button type="submit" class="btn-secondary" style="margin-top:16px;">Cadastrar usuário</button>
         </form>
         <p class="hint">O usuário recebe a senha inicial <strong>Estoque@2026</strong> e é obrigado a trocá-la no primeiro login.</p>
@@ -494,7 +503,7 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
   await comBotaoCarregando(botao, 'Entrando...', async () => {
     try {
       const resp = await api('login', { usuario, senha });
-      sessao = { usuario: resp.usuario, nome: resp.nome, perfil: resp.perfil };
+      sessao = { usuario: resp.usuario, nome: resp.nome, perfil: resp.perfil, permissao: resp.permissao || 'AMBOS' };
       localStorage.setItem('estoque_sessao', JSON.stringify(sessao));
       if (resp.precisaTrocarSenha) {
         mostrarTrocaSenha(senha);
@@ -552,6 +561,7 @@ function entrarNoApp() {
   if (sessao.perfil === 'ADM') {
     document.getElementById('tab-admin-btn').style.display = 'inline-block';
   }
+  aplicarPermissaoMovimentacao();
   carregarProdutos();
   carregarHistorico();
   if (sessao.perfil === 'ADM') {
@@ -697,7 +707,7 @@ document.getElementById('mov-busca').addEventListener('input', (e) => {
 
 document.getElementById('tipo-toggle').addEventListener('click', (e) => {
   const btn = e.target.closest('.tipo-btn');
-  if (!btn) return;
+  if (!btn || btn.disabled) return;
   const tipo = btn.dataset.tipo;
   document.getElementById('mov-tipo').value = tipo;
   document.querySelectorAll('.tipo-btn').forEach(b => b.classList.remove('ativo'));
@@ -710,16 +720,44 @@ document.getElementById('tipo-toggle').addEventListener('click', (e) => {
   btnRegistrar.style.background = tipo === 'Entrada' ? 'var(--green)' : 'var(--red)';
 });
 
-function resetarTipoToggle() {
-  document.getElementById('mov-tipo').value = 'Entrada';
+// Trava o botão que o usuário não tem permissão de usar (checado de novo no
+// servidor em registrarMovimentacao — isso aqui é só a experiência na tela).
+function aplicarPermissaoMovimentacao() {
+  const permissao = sessao.permissao || 'AMBOS';
+  const btnEntrada = document.querySelector('.tipo-btn.tipo-entrada');
+  const btnSaida = document.querySelector('.tipo-btn.tipo-saida');
+  const aviso = document.getElementById('permissao-aviso');
+  btnEntrada.disabled = false;
+  btnSaida.disabled = false;
+
+  if (permissao === 'ENTRADA') {
+    btnSaida.disabled = true;
+    selecionarTipoMovimentacao('Entrada');
+    aviso.textContent = 'Seu usuário só pode registrar entradas.';
+  } else if (permissao === 'SAIDA') {
+    btnEntrada.disabled = true;
+    selecionarTipoMovimentacao('Saida');
+    aviso.textContent = 'Seu usuário só pode registrar saídas.';
+  } else {
+    aviso.textContent = '';
+  }
+}
+
+function selecionarTipoMovimentacao(tipo) {
+  document.getElementById('mov-tipo').value = tipo;
   document.querySelectorAll('.tipo-btn').forEach(b => b.classList.remove('ativo'));
-  document.querySelector('.tipo-btn.tipo-entrada').classList.add('ativo');
+  document.querySelector(tipo === 'Entrada' ? '.tipo-btn.tipo-entrada' : '.tipo-btn.tipo-saida').classList.add('ativo');
   const form = document.getElementById('form-movimentacao');
-  form.classList.remove('modo-saida');
-  form.classList.add('modo-entrada');
+  form.classList.remove('modo-entrada', 'modo-saida');
+  form.classList.add(tipo === 'Entrada' ? 'modo-entrada' : 'modo-saida');
   const btnRegistrar = document.getElementById('btn-registrar');
-  btnRegistrar.textContent = 'Registrar entrada';
-  btnRegistrar.style.background = 'var(--green)';
+  btnRegistrar.textContent = tipo === 'Entrada' ? 'Registrar entrada' : 'Registrar saída';
+  btnRegistrar.style.background = tipo === 'Entrada' ? 'var(--green)' : 'var(--red)';
+}
+
+function resetarTipoToggle() {
+  const permissao = (sessao && sessao.permissao) || 'AMBOS';
+  selecionarTipoMovimentacao(permissao === 'SAIDA' ? 'Saida' : 'Entrada');
 }
 
 document.getElementById('form-movimentacao').addEventListener('submit', async (e) => {
@@ -808,10 +846,11 @@ document.getElementById('form-usuario').addEventListener('submit', async (e) => 
   const email = document.getElementById('user-email').value.trim();
   const usuario = document.getElementById('user-login').value.trim();
   const perfil = document.getElementById('user-perfil').value;
+  const permissao = document.getElementById('user-permissao').value;
   const botao = e.target.querySelector('button[type="submit"]');
   await comBotaoCarregando(botao, 'Cadastrando...', async () => {
     try {
-      const resp = await api('cadastrarUsuario', { nome, email, usuario, perfil });
+      const resp = await api('cadastrarUsuario', { nome, email, usuario, perfil, permissao });
       showToast(`Usuário criado. Senha inicial: ${resp.senhaInicial}`);
       e.target.reset();
       carregarUsuarios();
@@ -821,12 +860,18 @@ document.getElementById('form-usuario').addEventListener('submit', async (e) => 
   });
 });
 
+function labelPermissao(permissao) {
+  if (permissao === 'ENTRADA') return '<span style="color:var(--green); font-weight:600;">Só Entrada</span>';
+  if (permissao === 'SAIDA') return '<span style="color:var(--red); font-weight:600;">Só Saída</span>';
+  return 'Entrada e Saída';
+}
+
 async function carregarUsuarios() {
   const resp = await api('listarUsuarios', {});
   const el = document.getElementById('usuarios-lista');
   el.innerHTML = `
     <table>
-      <thead><tr><th>Nome</th><th>Login</th><th>E-mail</th><th>Perfil</th></tr></thead>
+      <thead><tr><th>Nome</th><th>Login</th><th>E-mail</th><th>Perfil</th><th>Movimentação</th></tr></thead>
       <tbody>
         ${resp.usuarios.map(u => `
           <tr>
@@ -834,6 +879,7 @@ async function carregarUsuarios() {
             <td>${u.usuario}</td>
             <td>${u.email}</td>
             <td>${u.perfil === 'ADM' ? '<span class="badge-adm">ADM</span>' : 'Colaborador'}</td>
+            <td>${labelPermissao(u.permissao)}</td>
           </tr>
         `).join('')}
       </tbody>
