@@ -473,8 +473,14 @@ function showToast(msg, isError) {
 async function api(action, params) {
   const body = new URLSearchParams();
   body.set('data', JSON.stringify({ action, ...params }));
+  const inicio = performance.now();
   const res = await fetch(API_URL, { method: 'POST', body });
   const json = await res.json();
+  const tempoTotal = Math.round(performance.now() - inicio);
+  // Diagnóstico de lentidão: só aparece no console do navegador (F12), não
+  // atrapalha a tela. "servidor" é o tempo dentro do Apps Script; a diferença
+  // pro "total" é rede + o "cold start" do Google (inevitável, não é o código).
+  console.log(`[estoque] ${action} — total: ${tempoTotal}ms | servidor: ${json._tempoServidorMs ?? '?'}ms`);
   if (!json.sucesso) throw new Error(json.erro || 'Erro desconhecido');
   return json;
 }
