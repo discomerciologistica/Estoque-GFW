@@ -475,8 +475,20 @@ async function api(action, params) {
   body.set('data', JSON.stringify({ action, ...params }));
   const inicio = performance.now();
   const res = await fetch(API_URL, { method: 'POST', body });
-  const json = await res.json();
+  const textoBruto = await res.text();
   const tempoTotal = Math.round(performance.now() - inicio);
+
+  let json;
+  try {
+    json = JSON.parse(textoBruto);
+  } catch (err) {
+    // A resposta não é JSON — normalmente é uma página HTML do próprio Google
+    // (tela de login/permissão expirada, ou limite de uso do Apps Script),
+    // não um erro do nosso código. Isso ajuda a diferenciar na hora de depurar.
+    console.error(`[estoque] ${action} — resposta não é JSON (HTTP ${res.status}). Primeiros 200 caracteres:`, textoBruto.slice(0, 200));
+    throw new Error('O Google não respondeu corretamente (provável sessão/permissão expirada ou limite de uso temporário). Tente de novo em alguns segundos; se persistir, saia e entre novamente.');
+  }
+
   // Diagnóstico de lentidão: só aparece no console do navegador (F12), não
   // atrapalha a tela. "servidor" é o tempo dentro do Apps Script; a diferença
   // pro "total" é rede + o "cold start" do Google (inevitável, não é o código).
@@ -559,7 +571,7 @@ function mostrarTrocaSenha(senhaAtual) {
   });
 }
 
-function entrarNoApp() {
+async function entrarNoApp() {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('troca-senha-screen').style.display = 'none';
   document.getElementById('app-screen').style.display = 'block';
@@ -568,11 +580,24 @@ function entrarNoApp() {
     document.getElementById('tab-admin-btn').style.display = 'inline-block';
   }
   aplicarPermissaoMovimentacao();
-  carregarProdutos();
-  carregarHistorico();
-  if (sessao.perfil === 'ADM') {
-    carregarUsuarios();
-    carregarEmails();
+
+  document.getElementById('estoque-container').innerHTML = '<p class="empty-state"><span class="spinner"></span>Carregando...</p>';
+  document.getElementById('historico-container').innerHTML = '<p class="empty-state"><span class="spinner"></span>Carregando...</p>';
+
+  // Uma única chamada ao servidor pra tudo que a tela inicial precisa —
+  // antes eram até 4 chamadas simultâneas (produtos, histórico, usuários,
+  // e-mails), e o Apps Script não lida bem com isso: elas competem entre
+  // si e quem "perde a vez" fica esperando na fila.
+  try {
+    const resp = await api('carregarInicial', { usuario: sessao.usuario });
+    exibirProdutos(resp.produtos);
+    exibirHistorico(resp.movimentacoes);
+    if (sessao.perfil === 'ADM' && resp.usuarios) {
+      exibirUsuarios(resp.usuarios);
+      exibirEmails(resp.emails);
+    }
+  } catch (err) {
+    showToast(err.message, true);
   }
 }
 
@@ -593,7 +618,11 @@ document.getElementById('tabs').addEventListener('click', (e) => {
 // ---------- produtos / movimentação ----------
 async function carregarProdutos() {
   const resp = await api('listarProdutos', {});
-  produtosCache = resp.produtos;
+  exibirProdutos(resp.produtos);
+}
+
+function exibirProdutos(produtos) {
+  produtosCache = produtos;
   const datalist = document.getElementById('lista-produtos');
   datalist.innerHTML = produtosCache.map(p => `<option value="${p.codigo} — ${p.descricao}">`).join('');
   renderEstoque();
@@ -799,8 +828,12 @@ async function carregarHistorico() {
   };
   document.getElementById('historico-container').innerHTML = '<p class="empty-state"><span class="spinner"></span>Carregando...</p>';
   const resp = await api('listarMovimentacoes', { filtros });
+  exibirHistorico(resp.movimentacoes);
+}
+
+function exibirHistorico(movimentacoes) {
   const container = document.getElementById('historico-container');
-  if (resp.movimentacoes.length === 0) {
+  if (movimentacoes.length === 0) {
     container.innerHTML = '<p class="empty-state">Nenhuma movimentação encontrada</p>';
     return;
   }
@@ -808,7 +841,7 @@ async function carregarHistorico() {
     <table>
       <thead><tr><th>Data/Hora</th><th>Código</th><th>Descrição</th><th>Tipo</th><th>Qtd</th><th>Usuário</th><th>Obs.</th></tr></thead>
       <tbody>
-        ${resp.movimentacoes.map(m => `
+        ${movimentacoes.map(m => `
           <tr>
             <td>${m.dataHora}</td>
             <td>${m.codigo}</td>
@@ -874,12 +907,16 @@ function labelPermissao(permissao) {
 
 async function carregarUsuarios() {
   const resp = await api('listarUsuarios', {});
+  exibirUsuarios(resp.usuarios);
+}
+
+function exibirUsuarios(usuarios) {
   const el = document.getElementById('usuarios-lista');
   el.innerHTML = `
     <table>
       <thead><tr><th>Nome</th><th>Login</th><th>E-mail</th><th>Perfil</th><th>Movimentação</th></tr></thead>
       <tbody>
-        ${resp.usuarios.map(u => `
+        ${usuarios.map(u => `
           <tr>
             <td>${u.nome}</td>
             <td>${u.usuario}</td>
@@ -912,8 +949,12 @@ document.getElementById('form-email').addEventListener('submit', async (e) => {
 
 async function carregarEmails() {
   const resp = await api('listarNotificacoes', {});
+  exibirEmails(resp.emails);
+}
+
+function exibirEmails(emails) {
   const el = document.getElementById('emails-lista');
-  el.innerHTML = resp.emails.map(e => `<div style="padding:6px 0; border-bottom:1px solid var(--border); font-size:13px;">${e}</div>`).join('') || '<p class="empty-state">Nenhum e-mail cadastrado</p>';
+  el.innerHTML = emails.map(e => `<div style="padding:6px 0; border-bottom:1px solid var(--border); font-size:13px;">${e}</div>`).join('') || '<p class="empty-state">Nenhum e-mail cadastrado</p>';
 }
 
 // ---------- restaurar sessão ----------
